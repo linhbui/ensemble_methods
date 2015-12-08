@@ -115,7 +115,7 @@ while ((nrow - subtractionFactor) > (ncol + 20)) {
 trainErrorList
 testErrorList
 # c plot
-plot(dataSetSize, trainErrorList,col='black')
+plot(dataSetSize, trainErrorList,col='black', main='Training Error & Test Error vs. Data Set Size')
 par(new=TRUE)
 plot(dataSetSize, testErrorList, col='red')
 legend('bottomright', c('Train Error', 'Test Error'), col=c('black', 'red'),bty='n',pch=16)
@@ -126,3 +126,55 @@ lines(trainErrorList~dataSetSize,lwd=2)
 par(new=TRUE)
 plot(testErrorList~dataSetSize,ann=FALSE,type='n')
 lines(testErrorList~dataSetSize,lwd=2,col='red')
+
+# Part 4
+# a
+rm(list=ls())
+train <- read.table("sonar_train.csv",sep = ",",header = FALSE)
+test <- read.table("sonar_test.csv",sep = ",",header = FALSE)
+sonar <- rbind(train,test)
+nrow <- 88 # most overfitted model from 3
+createEnsemble <- function(n, nrow, data) {
+  predictedValuesTrain <- NULL
+  predictedValuesTest <- NULL
+  for (i in seq(from=1, to=10)) {
+    randomCols = sample((ncol(data)-1), n)
+    randomCols <- c(randomCols, ncol(data))
+    randomData <- data[randomCols] 
+    
+    dataIn <- randomData[1:nrow,]
+    dataOut <- randomData[-nrow,]
+    
+    lm <- lm(V61~., data=dataIn)
+    dataFit <- dataIn[,-(n+1)]
+    lmFit <- predict(lm, newdata = dataFit)
+    matrix <- matrix(lmFit,nrow=nrow,ncol=1)
+    predictedValuesTrain <- cbind(predictedValuesTrain, matrix)
+    
+    dataFit <- dataOut[,-(n+1)]
+    lmFit <- predict(lm, newdata = dataFit)
+    matrix <- matrix(lmFit,nrow=nrow(dataOut),ncol=1)
+    predictedValuesTest <- cbind(predictedValuesTest, matrix)
+  }
+  
+  predictedValuesTrain <- cbind(predictedValuesTrain,dataIn[,(n+1)])
+  predictedValuesTest <- cbind(predictedValuesTest,dataOut[,(n+1)])
+  
+  ensembleDataTrain <- as.data.frame(predictedValuesTrain)
+  ensembleDataTest <- as.data.frame(predictedValuesTest)
+  
+  ensembledModel <- lm(V11~., data=ensembleDataTrain)
+  
+  ensembleFitTrain <- predict(ensembledModel, newdata=ensembleDataTrain[,-11])
+  correctTrain <- sum(ensembleFitTrain*ensembleDataTrain$V11 >0)
+  trainError <- (1-correctTrain/length(ensembleDataTrain$V11))
+  
+  ensembleFitTest <- predict(ensembledModel, newdata=ensembleDataTest[,-11])
+  correctTest <- sum(ensembleFitTest*ensembleDataTest$V11 >0)
+  testError <- (1-correctTest/length(ensembleDataTest$V11))
+  
+  returnResult <- matrix(c(n,trainError,testError),nrow=3,ncol=1)
+  return(returnResult)
+}
+
+model <- createEnsemble(11, 88, sonar)
