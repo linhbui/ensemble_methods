@@ -173,8 +173,114 @@ createEnsemble <- function(n, nrow, data) {
   correctTest <- sum(ensembleFitTest*ensembleDataTest$V11 >0)
   testError <- (1-correctTest/length(ensembleDataTest$V11))
   
-  returnResult <- matrix(c(n,trainError,testError),nrow=3,ncol=1)
+  returnResult <- matrix(c(n,trainError,testError),nrow=1,ncol=3)
   return(returnResult)
 }
 
-model <- createEnsemble(11, 88, sonar)
+a <- createEnsemble(11,88,sonar)
+#> a
+#[,1]
+#[1,] 11.00000000
+#[2,]  0.07954545
+#[3,]  0.18840580
+# Looks good!
+
+plotData <- NULL
+for (n in seq(5,50,by=5)) {
+  result <- createEnsemble(n, 88, sonar)
+  plotData <- rbind(plotData, result)
+}
+plotData 
+colnames(plotData) <- c('n', 'trainError', 'testError')
+
+plot(plotData[,1], plotData[,2],col='black', main='Training Error & Test Error vs. Number of Attributes', xlab='n', ylab='Error')
+par(new=TRUE)
+plot(plotData[,1], plotData[,3], col='red',ylab='',xlab='',labels=FALSE)
+legend('bottomright', c('Train Error', 'Test Error'), col=c('black', 'red'),bty='n',pch=16)
+par(new=TRUE)
+plot(plotData[,2]~plotData[,1],ann=FALSE,type='n',ylab='',xlab='')
+lines(plotData[,2]~plotData[,1],lwd=2)
+par(new=TRUE)
+plot(plotData[,3]~plotData[,1],ann=FALSE,type='n',ylab='',xlab='')
+lines(plotData[,3]~plotData[,1],lwd=2,col='red')
+
+# Part 5
+rm(list=ls())
+train <- read.table("sonar_train.csv",sep = ",",header = FALSE)
+test <- read.table("sonar_test.csv",sep = ",",header = FALSE)
+sonar <- rbind(train,test)
+
+# Use random forest
+library(randomForest)
+xTrain <- train[,1:60]
+yTrain <- as.factor(train[,61])
+model<-randomForest(xTrain,yTrain)
+xTest <- test[,1:60]
+yTest <- as.factor(test[,61])
+yTestEst <- predict(model,xTest)
+testError <- 1 - sum(yTest==yTestEst)/length(yTest)
+testError
+
+# Ensembled methods 
+library(rpart)
+library(ridge)
+x <- sonar[,1:60]
+y <- sonar[,61]
+yFactor <- as.factor(y)
+ncol <- ncol(sonar) - 1
+
+dataMatrix <- NULL
+
+for (i in seq(1,100)) {
+  randomNum <- sample(1:ncol, 1)
+  randomCols = sample(ncol(sonar) - 1, randomNum)
+  xTrain <- sonar[randomCols]
+  yTrain <- as.factor(sonar[,61])
+  model <- rpart(yTrain~.,xTrain,control=rpart.control(maxdepth=2, minsplit=2))
+  predictedValues <- predict(model,xTrain,type='class')
+  dataMatrix <- cbind(dataMatrix, predictedValues)
+}
+
+colnames(dataMatrix) <- 1:100
+dataMatrix <- cbind(dataMatrix,y)
+
+exponent <- seq(from=4, to=-1, by=-0.1)
+I <- seq(from = 1, to = nrow(dataMatrix))
+nxval <- 7 
+
+trainOutput <- NULL
+testOutput <- NULL
+lambdas <- NULL
+
+for(ilambda in 1:length(exponent)){
+	xlambda <- 10^(exponent[ilambda])
+	trainErr <- 0.0
+	testErr <- 0.0
+	for(ixval in seq(from =  1, to = nxval)){
+		Iout <- which(I%%nxval == ixval%%nxval)
+		trainIn <- dataMatrix[-Iout,]
+		trainOut <- dataMatrix[Iout,]
+		yin <- trainIn[,101]
+		yout <- trainOut[,101]
+		xin <- as.data.frame(trainIn[,1:100])
+		xout <- as.data.frame(trainOut[,1:100])
+		fit <- linearRidge(yin~.,data=xin,lambda=xlambda)
+		yhat <- predict(fit,xin)
+		dY <- yin - yhat
+		# here the error is the Euclidean distance between
+		# the actual and predicted values
+		trainErr <- trainErr + sqrt(sum(dY*dY))/(length(yin))	
+		yhat <- predict(fit,xout)
+		dY <- yout - yhat
+		testErr <- testErr + sqrt(sum(dY*dY))/(length(yout))	
+	}
+	lambdas <- c(lambdas, xlambda)
+	trainOutput <- c(trainOutput, trainErr/nxval)
+	testOutput <- c(testOutput,testErr/nxval)
+}
+
+minTestError <- min(testOutput)
+index <- match(minTestError, testOutput)
+bestLambda <- lambdas[index]
+bestLambda
+minTestError
